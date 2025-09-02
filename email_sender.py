@@ -111,71 +111,79 @@ def get_email_templates(letter_type, recipient_name, domain):
         return subject, body
 
 
+# In email_sender.py
+
 def send_personalized_email(pdf_path: str, recipient_data: dict, sender_account: str = 'default'):
     """
-    Connects to the SMTP server and sends a personalized email with a PDF attached.
-    Also sends a BCC copy to the configured log email.
+    Connects to the SMTP server using the standard Port 587 with STARTTLS.
+    This is the most compatible method for most providers.
     """
+    server = None  # Initialize server to None for the finally block
     try:
-        # <-- CHANGE 2: Select credentials based on the sender_account argument
         if sender_account == 'hr':
             sender_email = HR_EMAIL
             sender_password = HR_EMAIL_PASSWORD
-        else:  # Default case
+        else:
             sender_email = DEFAULT_EMAIL
             sender_password = DEFAULT_EMAIL_PASSWORD
 
+        # --- Message creation logic (no changes) ---
         recipient_name = recipient_data["name"]
         recipient_email = recipient_data["email"]
         domain = recipient_data["domain"]
         letter_type = recipient_data["letter_type"]
-
         msg = MIMEMultipart()
         msg["From"] = sender_email
         msg["To"] = recipient_email
-        msg["Bcc"] = BCC_EMAIL  # <-- CHANGE 2: Add the BCC header to the email message.
-
+        msg["Bcc"] = BCC_EMAIL
         subject, html_body = get_email_templates(letter_type, recipient_name, domain)
         msg["Subject"] = subject
         msg.attach(MIMEText(html_body, "html"))
-
+        # --- PDF attachment logic (no changes) ---
         pdf_path_obj = Path(pdf_path)
         if not pdf_path_obj.is_file():
             print(f"[ERROR] PDF file not found at: {pdf_path}")
             return False
-
         with open(pdf_path_obj, "rb") as f:
             attachment = MIMEApplication(f.read(), _subtype="pdf")
-
-        attachment.add_header(
-            "Content-Disposition", "attachment",
-            filename=f"{letter_type.replace(' ', '_')}.pdf"
-        )
+        attachment.add_header("Content-Disposition", "attachment", filename=f"{letter_type.replace(' ', '_')}.pdf")
         msg.attach(attachment)
 
-        # <-- CHANGE 3: Create a list of all recipients (To and Bcc) for the server.
-        all_recipients = [recipient_email, BCC_EMAIL]
-
+        # --- THE CORRECTED CONNECTION LOGIC for PORT 587 ---
         context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
-            server.login(sender_email, sender_password)
 
-            # THE FIX: The send_message method only needs the message object.
-            # It will intelligently read the 'To' and 'Bcc' headers.
-            server.send_message(msg)
+        # 1. Connect to the server on port 587. Use smtplib.SMTP, not SMTP_SSL.
+        print(f"Connecting to {SMTP_SERVER} on port {SMTP_PORT}...")
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
 
-            print(f"Successfully sent email to {recipient_name} and BCC'd to {BCC_EMAIL}")
-            return True
+        # 2. Upgrade the connection to be secure using STARTTLS
+        print("Securing connection with STARTTLS...")
+        server.starttls(context=context)
+
+        # 3. Login with your credentials
+        print(f"Logging in as {sender_email}...")
+        server.login(sender_email, sender_password)
+
+        # 4. Send the email
+        print("Sending email...")
+        all_recipients = [recipient_email, BCC_EMAIL]
+        server.sendmail(sender_email, all_recipients, msg.as_string())
+
+        print(f"Successfully sent email from {sender_email} to {recipient_name} via Port 587.")
+        return True
 
     except smtplib.SMTPAuthenticationError:
-        print("[ERROR] Login failed. Check your SENDER_EMAIL and SENDER_PASSWORD.")
-        return False
-    except KeyError as e:
-        print(f"[ERROR] Missing key in recipient_data dictionary: {e}")
+        print(
+            f"[ERROR] Login failed for {sender_email}. This means the password or username is wrong, or the provider is blocking the login.")
         return False
     except Exception as e:
         print(f"[ERROR] An error occurred while sending the email: {e}")
         return False
+    finally:
+        # 5. Always ensure the connection is closed.
+        if server:
+            print("Closing connection.")
+            server.quit()
 
 # recipient_data = {
 #     "name": "Sayma Perween",
