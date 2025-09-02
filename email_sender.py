@@ -12,7 +12,7 @@ load_dotenv()
 
 # --- SMTP SERVER CONFIGURATION ---
 SMTP_SERVER = "smtpout.secureserver.net"
-SMTP_PORT = 465
+SMTP_PORT = 587
 DEFAULT_EMAIL = os.environ.get("DEFAULT_EMAIL")
 DEFAULT_EMAIL_PASSWORD = os.environ.get("DEFAULT_EMAIL_PASSWORD")  # <-- Make sure this is your correct password
 
@@ -173,3 +173,11 @@ def send_personalized_email(pdf_path: str, recipient_data: dict, sender_account:
     except Exception as e:
         print(f"[ERROR] An error occurred while sending the email: {e}")
         return False
+
+# recipient_data = {
+#     "name": "Sayma Perween",
+#     "email": "Saymaperween75@gmail.com",
+#     "domain": "Marketing",            # Used only for internship template
+#     "letter_type": "campus ambassador"     # One of: campus ambassador / internship acceptance / offer letter
+# }
+# send_personalized_email('CA_Letter_Sayma_Perween.pdf', recipient_data)

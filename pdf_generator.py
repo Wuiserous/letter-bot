@@ -131,3 +131,5 @@ def generate_offer_letter_pdf_with_preview(name: str, training_from: str) -> tup
     # Step 2: Create the preview
     preview_path = _create_preview_from_pdf(output_path)
     return output_path, preview_path
+
+generate_campus_ambassador_pdf_with_preview('Sayma Perween')
