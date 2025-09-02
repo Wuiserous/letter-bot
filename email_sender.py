@@ -159,8 +159,11 @@ def send_personalized_email(pdf_path: str, recipient_data: dict, sender_account:
         context = ssl.create_default_context()
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
             server.login(sender_email, sender_password)
-            # <-- CHANGE 4: Provide the full recipient list to the send command.
-            server.send_message(msg, sender_email, all_recipients)
+
+            # THE FIX: The send_message method only needs the message object.
+            # It will intelligently read the 'To' and 'Bcc' headers.
+            server.send_message(msg)
+
             print(f"Successfully sent email to {recipient_name} and BCC'd to {BCC_EMAIL}")
             return True
 
