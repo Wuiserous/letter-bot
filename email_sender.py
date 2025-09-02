@@ -113,12 +113,14 @@ def get_email_templates(letter_type, recipient_name, domain):
 
 # In email_sender.py
 
+# In email_sender.py
+
 def send_personalized_email(pdf_path: str, recipient_data: dict, sender_account: str = 'default'):
     """
     Connects to the SMTP server using the standard Port 587 with STARTTLS.
     This is the most compatible method for most providers.
     """
-    server = None  # Initialize server to None for the finally block
+    server = None
     try:
         if sender_account == 'hr':
             sender_email = HR_EMAIL
@@ -127,19 +129,23 @@ def send_personalized_email(pdf_path: str, recipient_data: dict, sender_account:
             sender_email = DEFAULT_EMAIL
             sender_password = DEFAULT_EMAIL_PASSWORD
 
-        # --- Message creation logic (no changes) ---
         recipient_name = recipient_data["name"]
         recipient_email = recipient_data["email"]
         domain = recipient_data["domain"]
         letter_type = recipient_data["letter_type"]
+
         msg = MIMEMultipart()
         msg["From"] = sender_email
         msg["To"] = recipient_email
-        msg["Bcc"] = BCC_EMAIL
+
+        # --- THE FIX: DELETE THIS LINE ---
+        # msg["Bcc"] = BCC_EMAIL  <-- DELETE THIS LINE
+
         subject, html_body = get_email_templates(letter_type, recipient_name, domain)
         msg["Subject"] = subject
         msg.attach(MIMEText(html_body, "html"))
-        # --- PDF attachment logic (no changes) ---
+
+        # ... (PDF attachment logic remains the same)
         pdf_path_obj = Path(pdf_path)
         if not pdf_path_obj.is_file():
             print(f"[ERROR] PDF file not found at: {pdf_path}")
@@ -149,24 +155,20 @@ def send_personalized_email(pdf_path: str, recipient_data: dict, sender_account:
         attachment.add_header("Content-Disposition", "attachment", filename=f"{letter_type.replace(' ', '_')}.pdf")
         msg.attach(attachment)
 
-        # --- THE CORRECTED CONNECTION LOGIC for PORT 587 ---
-        context = ssl.create_default_context()
+        # The 'all_recipients' list is still correct and necessary
+        all_recipients = [recipient_email, BCC_EMAIL]
 
-        # 1. Connect to the server on port 587. Use smtplib.SMTP, not SMTP_SSL.
+        context = ssl.create_default_context()
         print(f"Connecting to {SMTP_SERVER} on port {SMTP_PORT}...")
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-
-        # 2. Upgrade the connection to be secure using STARTTLS
         print("Securing connection with STARTTLS...")
         server.starttls(context=context)
-
-        # 3. Login with your credentials
         print(f"Logging in as {sender_email}...")
         server.login(sender_email, sender_password)
-
-        # 4. Send the email
         print("Sending email...")
-        all_recipients = [recipient_email, BCC_EMAIL]
+
+        # This function call correctly sends to both recipients without
+        # adding the Bcc header to the visible message content.
         server.sendmail(sender_email, all_recipients, msg.as_string())
 
         print(f"Successfully sent email from {sender_email} to {recipient_name} via Port 587.")
@@ -180,7 +182,6 @@ def send_personalized_email(pdf_path: str, recipient_data: dict, sender_account:
         print(f"[ERROR] An error occurred while sending the email: {e}")
         return False
     finally:
-        # 5. Always ensure the connection is closed.
         if server:
             print("Closing connection.")
             server.quit()
