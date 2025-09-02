@@ -74,27 +74,25 @@ async def show_paywall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         text="Your trial/subscription has ended. To continue using the bot, please subscribe for ₹999/month."
     )
 
-    payment_url = razorpay_handler.create_one_time_payment_link(
-        user_id=user_id,
-        amount_in_inr=999,
-        reason="Monthly Access for Letter Bot"
-    )
+    payment_url = razorpay_handler.create_subscription_link(user_id)
 
     if payment_url:
         keyboard = [
-            # The button text is now more generic
-            [InlineKeyboardButton("Pay ₹999 Now", url=payment_url)],
+            # The button text is updated to be clearer about the action
+            [InlineKeyboardButton("Subscribe Now (₹999/month)", url=payment_url)],
             [InlineKeyboardButton("✅ I've Paid, Check My Status", callback_data="check_payment_status")]
         ]
         await context.bot.send_message(
             chat_id=chat_id,
-            text="Please click the button below to complete your payment. On mobile, you will see options for all your UPI apps.",
+            text="Please click the button below to authorize the recurring subscription via UPI AutoPay. It's instant!",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return AWAITING_PAYMENT_CONFIRMATION
     else:
-        await context.bot.send_message(chat_id=chat_id,
-                                       text="Could not create a payment link right now. Please try again later.")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Could not create a payment link right now. Please try again later."
+        )
         return CHOOSING_ACTION
 
 

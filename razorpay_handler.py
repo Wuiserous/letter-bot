@@ -12,7 +12,7 @@ RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET")
 
 # IMPORTANT: Replace with the Plan ID you created in your Razorpay Dashboard
-PLAN_ID = "plan_RCUBr3Vr2vzF0g"  # e.g., plan_ABC123xyz
+PLAN_ID = "plan_RCa5DBhCUQgZFS"  # e.g., plan_ABC123xyz
 
 
 def create_one_time_payment_link(user_id: int, amount_in_inr: float, reason: str):
@@ -61,6 +61,7 @@ def create_subscription_link(user_id: int):
                 # This is the most important part for tracking who paid.
                 "telegram_user_id": str(user_id)
             },
+            "customer_notify": 1,
             "notify_info": {
                 "notify_phone": False,
                 "notify_email": False
