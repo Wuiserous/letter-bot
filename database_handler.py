@@ -1,99 +1,161 @@
 # database_handler.py
+
 import os
-import sqlite3
-from datetime import datetime, timedelta
+import json
 import requests
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_FILE = 'bot_database.db'
+# Your Google Apps Script Web App URL
+SCRIPT_URL = os.getenv('GOOGLE_SCRIPT_URL')
+# The local JSON file for caching user statuses
+CACHE_FILE = 'user_status_cache.json'
+
+
+def _load_cache():
+    """Loads the user status cache from the JSON file."""
+    try:
+        with open(CACHE_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_cache(cache_data):
+    """Saves the user status cache to the JSON file."""
+    with open(CACHE_FILE, 'w') as f:
+        json.dump(cache_data, f, indent=4)
+
+
+def _fetch_from_sheet(params: dict):
+    """
+    Generic function to make a request to the Google Apps Script.
+    This version is corrected to properly handle Google's redirects.
+    """
+    # Define browser-like headers to ensure the request is not blocked
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+
+    try:
+        # Make the request, explicitly allowing redirects (which is default but good to be clear)
+        response = requests.get(
+            SCRIPT_URL,
+            params=params,
+            headers=headers,
+            allow_redirects=True, # This is crucial
+            timeout=15
+        )
+
+        # Check if the final response is successful
+        response.raise_for_status()
+
+        # This is the most important part: a robust check for valid JSON.
+        # If the response is not JSON, we will print the raw text to see the error.
+        try:
+            return response.json()
+        except json.JSONDecodeError:
+            print("--- FATAL ERROR: RESPONSE FROM GOOGLE WAS NOT JSON ---")
+            print(f"Status Code: {response.status_code}")
+            print("Response Headers:", response.headers)
+            print("Final URL after redirects:", response.url)
+            print("Response Text (first 500 chars):", response.text[:500])
+            print("------------------------------------------------------")
+            return {"status": "error", "message": "The server returned a non-JSON response."}
+
+    except requests.RequestException as e:
+        print(f"HTTP Request to Google Sheet failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+def clear_user_cache(user_id: int):
+    """Removes a single user from the local cache, forcing a refresh on next check."""
+    cache = _load_cache()
+    if str(user_id) in cache:
+        del cache[str(user_id)]
+        _save_cache(cache)
+        print(f"Cache cleared for user_id: {user_id}")
 
 
 def get_user_status(user_id: int):
-    """Checks a user's status in the local SQLite database. Very fast."""
-    try:
-        conn = sqlite3.connect(DATABASE_FILE)
-        cursor = conn.cursor()
+    """
+    Checks user status. First checks the local JSON cache, then falls back to the Google Sheet.
+    """
+    cache = _load_cache()
+    user_id_str = str(user_id)
 
-        cursor.execute("SELECT subscription_status, subscription_expiry_date FROM users WHERE user_id = ?", (user_id,))
-        user_data = cursor.fetchone()
+    if user_id_str in cache:
+        cached_data = cache[user_id_str]
+        # Perform local expiry check first - it's fast and saves an API call
+        expiry_date = datetime.strptime(cached_data['expiry_date'], "%Y-%m-%d")
+        if datetime.now() > expiry_date and cached_data['status'] != 'expired':
+            cached_data['status'] = 'expired'
+            cache[user_id_str] = cached_data
+            _save_cache(cache)
 
-        if not user_data:
-            return {"status": "not_found"}
+        print(f"Cache hit for user {user_id_str}. Status: {cached_data['status']}")
+        return cached_data
 
-        current_status, expiry_date_str = user_data
+    # If not in cache, fetch from the source of truth (Google Sheet)
+    print(f"Cache miss for user {user_id_str}. Fetching from Google Sheet...")
+    params = {'action': 'getUserStatus', 'user_id': user_id_str}
+    response = _fetch_from_sheet(params)
 
-        # Auto-expiry logic
-        expiry_date = datetime.strptime(expiry_date_str, "%Y-%m-%d")
-        if datetime.now() > expiry_date and current_status != "expired":
-            cursor.execute("UPDATE users SET subscription_status = 'expired' WHERE user_id = ?", (user_id,))
-            conn.commit()
-            current_status = "expired"
-
-        conn.close()
-        return {"status": current_status, "expiry_date": expiry_date_str}
-
-    except Exception as e:
-        print(f"Error getting user status from SQLite: {e}")
-        return {"status": "error", "message": str(e)}
+    if response.get("status") == "success":
+        user_data = response["data"]
+        # Update the cache with the fresh data
+        cache[user_id_str] = user_data
+        _save_cache(cache)
+        return user_data
+    elif response.get("status") == "not_found":
+        return {"status": "not_found"}
+    else:
+        # Return the error but don't cache it
+        return {"status": "error", "message": response.get("message", "Unknown error from script")}
 
 
 def register_new_user(user_id: int, username: str):
-    """Adds a new user to the SQLite database with a 30-day trial."""
-    try:
-        conn = sqlite3.connect(DATABASE_FILE)
-        cursor = conn.cursor()
-
-        trial_start_date = datetime.now()
-        trial_expiry_date = trial_start_date + timedelta(days=30)
-
-        cursor.execute('''
-            INSERT INTO users (user_id, username, trial_start_date, subscription_status, subscription_expiry_date)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (
-        user_id, username, trial_start_date.strftime("%Y-%m-%d"), "trial", trial_expiry_date.strftime("%Y-%m-%d")))
-
-        conn.commit()
-        conn.close()
-        return {"status": "success"}
-    except sqlite3.IntegrityError:
-        # This happens if the user_id (primary key) already exists. Safe to ignore.
-        conn.close()
-        return {"status": "exists"}
-    except Exception as e:
-        print(f"Error registering new user in SQLite: {e}")
-        conn.close()
-        return {"status": "error", "message": str(e)}
+    """Registers a new user via the web app. No caching needed here."""
+    params = {'action': 'registerNewUser', 'user_id': user_id, 'username': username}
+    return _fetch_from_sheet(params)
 
 
 def log_activity(letter_type: str, recipient_name: str, recipient_email: str, sent_by: str, status: str):
-    """Logs a record to the activity_log table in SQLite."""
-    try:
-        conn = sqlite3.connect(DATABASE_FILE)
-        cursor = conn.cursor()
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    """Logs an activity via the web app. This is a 'fire-and-forget' action."""
+    params = {
+        'action': 'logActivity',
+        'letter_type': letter_type,
+        'recipient_name': recipient_name,
+        'recipient_email': recipient_email,
+        'sent_by': sent_by,
+        'status': status
+    }
+    response = _fetch_from_sheet(params)
+    return response.get("status") == "success"
 
-        cursor.execute('''
-            INSERT INTO activity_log (timestamp, letter_type, recipient_name, recipient_email, sent_by, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (timestamp, letter_type, recipient_name, recipient_email, sent_by, status))
 
-        conn.commit()
-        conn.close()
+def update_user_subscription(user_id: int):
+    """
+    Updates a user's subscription in the Google Sheet and clears the local cache for that user.
+    This should be called by your Razorpay webhook handler.
+    """
+    params = {'action': 'updateSubscription', 'user_id': user_id}
+    response = _fetch_from_sheet(params)
+    if response.get("status") == "success":
+        # Important: Clear the old cached data to force a refresh on the next check
+        clear_user_cache(user_id)
         return True
-    except Exception as e:
-        print(f"Error logging activity to SQLite: {e}")
-        return False
-
-
-CLIENT_SCRIPT_URL = os.environ.get("CLIENT_SCRIPT_URL")
+    return False
 
 
 def fetch_student_from_client_sheet(name: str):
     """
-    Fetches intern details by calling the client's Google Apps Script URL.
+    This function remains unchanged, as it likely points to a different Apps Script.
+    If it points to the same script, you would integrate it into the `doGet` function.
     """
+    CLIENT_SCRIPT_URL = os.environ.get("CLIENT_SCRIPT_URL")
     try:
         params = {'action': 'findStudent', 'name': name}
         response = requests.get(CLIENT_SCRIPT_URL, params=params)
@@ -101,7 +163,7 @@ def fetch_student_from_client_sheet(name: str):
         data = response.json()
 
         if data.get("status") == "success":
-            return data
+            return data.get("data")  # Assuming the script wraps data in a 'data' key
         else:
             print(f"Client's Sheet API Error: {data.get('message')}")
             return None
