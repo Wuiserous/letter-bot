@@ -155,7 +155,7 @@ def fetch_student_from_client_sheet(name: str):
     This function remains unchanged, as it likely points to a different Apps Script.
     If it points to the same script, you would integrate it into the `doGet` function.
     """
-    CLIENT_SCRIPT_URL = os.environ.get("CLIENT_SCRIPT_URL")
+    CLIENT_SCRIPT_URL = os.getenv("CLIENT_SCRIPT_URL")
     try:
         params = {'action': 'findStudent', 'name': name}
         response = requests.get(CLIENT_SCRIPT_URL, params=params)
