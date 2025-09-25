@@ -172,3 +172,5 @@ def fetch_student_from_client_sheet(name: str):
     except Exception as e:
         print(f"HTTP Request to client's sheet failed: {e}")
         return None
+
+# print(fetch_student_from_client_sheet('Wuis'))

@@ -59,7 +59,7 @@ def generate_internship_acceptance_pdf_with_preview(name: str, month: str, domai
         "artificial intelligence": "templates/ai-internship.pdf", "machine learning": "templates/ml-internship.pdf",
         "web development": "templates/wd-internship.pdf", "cybersecurity": "templates/cs-internship.pdf",
         "data science": "templates/ds-internship.pdf", "digital marketing": "templates/dm-internship.pdf",
-        "human resourses": "templates/hr-internship.pdf", "finance": "templates/fi-internship.pdf",
+        "human resource management": "templates/hr-internship.pdf", "finance": "templates/fi-internship.pdf",
         "financial modeling & analysis": "templates/fi-internship.pdf",
         "financial modeling & valuation": "templates/fi-internship.pdf",
         "cloud computing": "templates/cc-internship.pdf",
