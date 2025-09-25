@@ -152,10 +152,11 @@ def update_user_subscription(user_id: int):
 
 def fetch_student_from_client_sheet(name: str):
     """
-    This function remains unchanged, as it likely points to a different Apps Script.
-    If it points to the same script, you would integrate it into the `doGet` function.
+    Fetches student info from the client's Google Sheet via Apps Script.
+    Returns the JSON object if found, otherwise None.
     """
-    CLIENT_SCRIPT_URL = os.getenv("CLIENT_SCRIPT_URL")
+    CLIENT_SCRIPT_URL = os.getenv("CLIENT_SCRIPT_URL")  # Make sure this env variable is set
+
     try:
         params = {'action': 'findStudent', 'name': name}
         response = requests.get(CLIENT_SCRIPT_URL, params=params)
@@ -163,10 +164,11 @@ def fetch_student_from_client_sheet(name: str):
         data = response.json()
 
         if data.get("status") == "success":
-            return data.get("data")  # Assuming the script wraps data in a 'data' key
+            return data  # Return the full JSON object as is
         else:
             print(f"Client's Sheet API Error: {data.get('message')}")
             return None
+
     except Exception as e:
         print(f"HTTP Request to client's sheet failed: {e}")
         return None
